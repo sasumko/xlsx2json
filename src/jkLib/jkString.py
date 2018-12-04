@@ -1,6 +1,6 @@
 import sys
 import os
 
-def GetString (_a):
-    return ""
-    
+
+def IsEmpty (_str):
+    return bool(_str and _str.strip())
