@@ -1,8 +1,9 @@
 
 import sys
 import os
-from jkLib import jkCommonLib
+import json
 
+from jkLib import jkCommonLib
 
 from openpyxl import Workbook
 from openpyxl import load_workbook
@@ -70,19 +71,19 @@ def ParseKeyField (_sheet, _keyRowIndex):
     return _dictRet 
 
 
-def ParseSheet (_sheet):
+def ParseSheet (_sheet, _outPath):
     if jkCommonLib.IsEmpty(_sheet['A1'].value) == True or jkCommonLib.IsEmpty(_sheet['A2'].value):
-        return
+        return None
         
     _nameCellValue = str.strip( _sheet['A1'].value ).lower()
     _typeCellValue = str.strip( _sheet['A2'].value ).lower()
     
     # is valid to parse?
     if _nameCellValue != "name":
-        return
+        return None
 
     if _typeCellValue != "type":
-        return
+        return None
 
     ##  read def
     _sheetName = _sheet.title
@@ -96,6 +97,8 @@ def ParseSheet (_sheet):
     _dictFieldByColumn = ParseKeyField(_sheet, _dataRowIndex)
     _lastColumnIndex = GetLastKeyColumnIndex(_dictFieldByColumn)
 
+    _listRet = []   #return value
+
     ##  read data by field order
     for _row in _sheet.iter_rows(min_row=_dataRowIndex + 1, max_col=_lastColumnIndex + 1):
         if _row[0].value == None:
@@ -103,44 +106,89 @@ def ParseSheet (_sheet):
             continue
         
         _columnIndex = 0
+        _dictRow = {}
+
         for _value in _row:
             _key = GetKeyByColumnIndex(_dictFieldByColumn, _columnIndex)
             _valueToStore = _value.value
-            if jkCommonLib.IsEmpty(_key) == False and _valueToStore != None:
-                print ('key:%s\t\tvalue:%s' % (_key, _valueToStore))
+            if jkCommonLib.IsEmpty(_key) == True or _valueToStore == None:
+                _columnIndex = _columnIndex + 1
+                continue
+            
+            if _dictRow.get(_key) == None:
+                #Add value as single data
+                _dictRow[_key] = _valueToStore
+                print('[%s] = [%s]' % (_key, _valueToStore))
+            else:
+                if isinstance( _dictRow[_key], (list,)) == True:
+                    _dictRow[_key].append( _valueToStore )
+                    print('[%s] = %s is now' % (_key, _dictRow[_key]))
+                else:
+                    _dictRow[_key] = [_dictRow[_key], _valueToStore]
+                    print('[%s] = %s is now' % (_key, _dictRow[_key]))
+                # print ('key:%s\t\tvalue:%s' % (_key, _valueToStore))
 
             _columnIndex = _columnIndex + 1
+        
+        if len( _dictRow.keys() ) > 0:
+            _listRet.append(_dictRow)
+        
+    if len(_listRet) == 0:
+            return None
+
+    _strToDump = json.dumps(_listRet)
+
+    _fpJson = open(os.path.join( _outPath, _nameCellValue + '.json'), 'w')
+    json.dump(_listRet, _fpJson)
+    _fpJson.close()
+
+    return _listRet
             
     
 
 
-def xlsx2json (_sourceFile):
+def xlsx2json (_sourceFile, _outPath):
     _workbook = load_workbook(_sourceFile)
 
     print (_workbook.sheetnames)
 
     for _sheet in _workbook:
-        ParseSheet(_sheet)
-        
+        ParseSheet(_sheet, _outPath)
+
+
     return 1
 
-def main (argv = sys.argv):
-    # if len (argv) < 2:
-    #     print ('usage : xlsx2json [xlsx file]')
-    #     return -1
+_debugFlag = 0
 
-    # _xlsFileName = GetFullPath(argv[1])
-    _xlsFileName = jkCommonLib.GetFullPath("../../sample.xlsx")
+def main (argv = sys.argv):
+    if _debugFlag == 0:
+        if len (argv) < 2:
+            print ('usage : xlsx2json [xlsx file] [output]')
+            return -1
+
+        _xlsFileName = jkCommonLib.GetFullPath(argv[1])
+
+        if len(argv) > 2:
+            _outputPath = jkCommonLib.GetFullPath(argv[2])
+        else:
+            _outputPath = jkCommonLib.GetLocatedPath(_xlsFileName)
+
+    else:
+    
+        _xlsFileName = jkCommonLib.GetFullPath("../../sample.xlsx")
+        _outputPath = jkCommonLib.GetLocatedPath(_xlsFileName)
+
     if os.path.isfile(_xlsFileName) == False:
         print ("Error: Cannout find file %s!" % _xlsFileName)
     
-    print ('start reading %s file @%s' 
+    print ('start reading file %s on @%s' 
             % (jkCommonLib.GetFileNameFromPath(_xlsFileName), 
                 jkCommonLib.GetLocatedPath(_xlsFileName) )
         )
+    print ('export json file on @%s' % _outputPath )
     
     
-    xlsx2json(_xlsFileName)
+    xlsx2json(_xlsFileName, _outputPath)
     
 
     return 1
