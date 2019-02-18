@@ -39,10 +39,13 @@ def ParseKeyField (_sheet, _keyRowIndex):
     ## read field
     _dictRet = {}
     _columnIndex = 0    #A = 0
+
     for _field in _sheet[_keyRowIndex]:
-        if _field.value == None:
-            break
-        _strField = str.strip(_field.value)
+        _strField = GetMergedCellValue(_sheet, _keyRowIndex, _columnIndex)
+        if _strField == None:
+            if _field.value == None:
+                break
+            _strField = str.strip(_field.value)
         
         if jkCommonLib.IsEmpty(_strField) == True or _strField.startswith('_'):
             _columnIndex = _columnIndex + 1
@@ -71,6 +74,22 @@ def ParseKeyField (_sheet, _keyRowIndex):
     return _dictRet 
 
 
+def GetMergedCellValue (_sheet, _row, _col):
+    for e in _sheet.merged_cells:
+        if _row != e.min_row:
+            continue
+        if _row != e.max_row:
+            continue
+        
+        if e.min_col > _col:
+            continue
+
+        if e.max_col < _col:
+            continue
+
+        return _sheet.cell(e.min_row, e.min_col).value    
+    return None
+
 def ParseSheet (_sheet, _outPath):
     if jkCommonLib.IsEmpty(_sheet['A1'].value) == True or jkCommonLib.IsEmpty(_sheet['A2'].value):
         return None
@@ -93,11 +112,19 @@ def ParseSheet (_sheet, _outPath):
     print ('\t>JsonName = %s.json' % _jsonName)
     print ('\t>Type = %s' % _type)
 
+    for e in _sheet.merged_cells:
+        print (e)
+        print (_sheet.cell(e.min_row, e.min_col).value)
+        # _base_value = _sheet.cell_value(
+        # print (_base_value)
+
     _dataRowIndex = GetKeyFieldStartRowIndex(_sheet)
     _dictFieldByColumn = ParseKeyField(_sheet, _dataRowIndex)
     _lastColumnIndex = GetLastKeyColumnIndex(_dictFieldByColumn)
 
     _listRet = []   #return value
+
+    _listArrayKey = []
 
     ##  read data by field order
     for _row in _sheet.iter_rows(min_row=_dataRowIndex + 1, max_col=_lastColumnIndex + 1):
