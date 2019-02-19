@@ -64,8 +64,11 @@ def ParseKeyField (_sheet, _keyRowIndex):
         _columnIndex = _columnIndex + 1    
 
     _listField = list(_dictRet.keys())
-    _strFields = "KeyField parse done : "
+    _strFields = "......> : "
 
+    print ('.................................................')
+    print ('......>key field parse done')
+    
     for _field in _listField:
         _strFields = _strFields + _field + " "
 
@@ -90,7 +93,104 @@ def GetMergedCellValue (_sheet, _row, _col):
         return _sheet.cell(e.min_row, e.min_col).value    
     return None
 
-def ParseSheet (_sheet, _outPath):
+def ParseSheetSubProcHeader(_sheet, _name):
+    ####
+    ##  Parse sheet as header
+
+    _dataRowIndex = GetKeyFieldStartRowIndex(_sheet)
+    #_dictFieldByColumn = ParseKeyField(_sheet, _dataRowIndex)
+    #_lastColumnIndex = GetLastKeyColumnIndex(_dictFieldByColumn)
+
+    
+    _lines = 'public class %s\n{\n' % jkCommonLib.GetGNUString( _name )
+
+    for _row in _sheet.iter_rows(min_row=_dataRowIndex + 1, max_col=2):
+        if _row[0].value == None:
+            continue
+
+        _str_key = jkCommonLib.GetGNUString(_row[0].value) #str.strip(_row[0].value).upper()
+        _str_value = _row[1].value
+
+        _str_line_type = ''
+        if jkCommonLib.IsInt(_str_value) == True:
+            _str_line_type = 'int'
+            
+        elif jkCommonLib.IsFloat(_str_value) == True:
+            _str_line_type = 'float'
+            _str_value = '%sf' % _str_value
+            
+        else:
+            _str_line_type = 'string'
+            _str_value = '\"%s\"' % _str_value
+            
+        _lines = _lines + '\tpublic const %s\t%s\t=\t%s;\n' % (_str_line_type, _str_key, _str_value)
+
+
+    _lines = _lines +  '\n}'
+    print ( _lines)
+    
+    return _lines
+
+
+def ParseSheetSubProcJsonData(_sheet):
+    ####
+    ##  Parse sheet as Json data table
+    #for e in _sheet.merged_cells:
+        #print (e)
+        #print (_sheet.cell(e.min_row, e.min_col).value)
+        # _base_value = _sheet.cell_value(
+        # print (_base_value)
+
+    _dataRowIndex = GetKeyFieldStartRowIndex(_sheet)
+    _dictFieldByColumn = ParseKeyField(_sheet, _dataRowIndex)
+    _lastColumnIndex = GetLastKeyColumnIndex(_dictFieldByColumn)
+
+    _listRet = []   #return value
+
+
+
+    print ('.................................................')
+    ##  read data by field order
+    for _row in _sheet.iter_rows(min_row=_dataRowIndex + 1, max_col=_lastColumnIndex + 1):
+        if _row[0].value == None:
+            #if first column is none == comment row to be skipped
+            continue
+        
+        _columnIndex = 0
+        _dictRow = {}
+
+        print ('......> --- [%d] --- ' % len(_listRet) )
+        for _value in _row:
+            _key = GetKeyByColumnIndex(_dictFieldByColumn, _columnIndex)
+            _valueToStore = _value.value
+            if jkCommonLib.IsEmpty(_key) == True or _valueToStore == None:
+                _columnIndex = _columnIndex + 1
+                continue
+            
+            if _dictRow.get(_key) == None:
+                #Add value as single data
+                _dictRow[_key] = _valueToStore
+                print('......>> [%s] = [%s]' % (_key, _valueToStore))
+            else:
+                if isinstance( _dictRow[_key], (list,)) == True:
+                    _dictRow[_key].append( _valueToStore )
+                    print('......>> [%s] = %s (array updated)' % (_key, _dictRow[_key]))
+                else:
+                    _dictRow[_key] = [_dictRow[_key], _valueToStore]
+                    print('......>> [%s] = %s (array updated)' % (_key, _dictRow[_key]))
+                # print ('key:%s\t\tvalue:%s' % (_key, _valueToStore))
+
+            _columnIndex = _columnIndex + 1
+        
+        if len( _dictRow.keys() ) > 0:
+            _listRet.append(_dictRow)
+        
+
+    _strToDump = json.dumps(_listRet)
+    return _listRet
+
+
+def ParseSheet (_sheet, _outPath, _outHeaderPath):
     if jkCommonLib.IsEmpty(_sheet['A1'].value) == True or jkCommonLib.IsEmpty(_sheet['A2'].value):
         return None
         
@@ -106,81 +206,54 @@ def ParseSheet (_sheet, _outPath):
 
     ##  read def
     _sheetName = _sheet.title
-    _jsonName = jkCommonLib.GetCamelString(_sheet['B1'].value)
-    _type = _sheet['B2'].value
-    print ('start to parse sheet \"%s\"...' % _sheetName)
-    print ('\t>JsonName = %s.json' % _jsonName)
-    print ('\t>Type = %s' % _type)
+    _outputFileName = str.strip(_sheet['B1'].value)
+    
+    _type = str.strip(_sheet['B2'].value).lower()
+    print ('.................................................')
+    print ('...start to parse sheet \"%s\"...' % _sheetName)
+    print ('......>output name = %s' % _outputFileName)
+    print ('......>Type = %s' % _type)
 
-    for e in _sheet.merged_cells:
-        print (e)
-        print (_sheet.cell(e.min_row, e.min_col).value)
-        # _base_value = _sheet.cell_value(
-        # print (_base_value)
-
-    _dataRowIndex = GetKeyFieldStartRowIndex(_sheet)
-    _dictFieldByColumn = ParseKeyField(_sheet, _dataRowIndex)
-    _lastColumnIndex = GetLastKeyColumnIndex(_dictFieldByColumn)
-
-    _listRet = []   #return value
-
-    _listArrayKey = []
-
-    ##  read data by field order
-    for _row in _sheet.iter_rows(min_row=_dataRowIndex + 1, max_col=_lastColumnIndex + 1):
-        if _row[0].value == None:
-            #if first column is none == comment row to be skipped
-            continue
-        
-        _columnIndex = 0
-        _dictRow = {}
-
-        for _value in _row:
-            _key = GetKeyByColumnIndex(_dictFieldByColumn, _columnIndex)
-            _valueToStore = _value.value
-            if jkCommonLib.IsEmpty(_key) == True or _valueToStore == None:
-                _columnIndex = _columnIndex + 1
-                continue
+    _listRet = []
+    if _type == 'table':
+        _listRet = ParseSheetSubProcJsonData(_sheet)
+        if _listRet == None or len(_listRet) == 0:
+            print ('.................................................')
+            print ('......> Nothing to parse!')
+            print ('.................................................')
+            print ('\n\n')
             
-            if _dictRow.get(_key) == None:
-                #Add value as single data
-                _dictRow[_key] = _valueToStore
-                print('[%s] = [%s]' % (_key, _valueToStore))
-            else:
-                if isinstance( _dictRow[_key], (list,)) == True:
-                    _dictRow[_key].append( _valueToStore )
-                    print('[%s] = %s is now' % (_key, _dictRow[_key]))
-                else:
-                    _dictRow[_key] = [_dictRow[_key], _valueToStore]
-                    print('[%s] = %s is now' % (_key, _dictRow[_key]))
-                # print ('key:%s\t\tvalue:%s' % (_key, _valueToStore))
-
-            _columnIndex = _columnIndex + 1
-        
-        if len( _dictRow.keys() ) > 0:
-            _listRet.append(_dictRow)
-        
-    if len(_listRet) == 0:
             return None
+    
+        _outputFileNameWithPath = os.path.join( _outPath, _outputFileName + '.json')
+        _fpJson = open(_outputFileNameWithPath, 'w')
+        json.dump(_listRet, _fpJson)
+        _fpJson.close()
+        print ('.................................................')
+        print ('......> Write file [%s] done! ' % _outputFileNameWithPath)
+        print ('.................................................')
+        print ('\n\n')
+    elif _type == 'header':
+        #ParseSheet as header
+        _strToWrite = ParseSheetSubProcHeader(_sheet, _outputFileName)
 
-    _strToDump = json.dumps(_listRet)
-
-    _fpJson = open(os.path.join( _outPath, _nameCellValue + '.json'), 'w')
-    json.dump(_listRet, _fpJson)
-    _fpJson.close()
-
+        _outputFileNameWithPath = os.path.join( _outHeaderPath, _outputFileName + '.cs')
+        _fpHeader = open(_outputFileNameWithPath, 'w')
+        _fpHeader.write(_strToWrite)
+        _fpHeader.close()
+        
     return _listRet
             
     
 
 
-def xlsx2json (_sourceFile, _outPath):
+def xlsx2json (_sourceFile, _outPath, _outHeaderPath):
     _workbook = load_workbook(_sourceFile)
 
     print (_workbook.sheetnames)
 
     for _sheet in _workbook:
-        ParseSheet(_sheet, _outPath)
+        ParseSheet(_sheet, _outPath, _outHeaderPath)
 
 
     return 1
@@ -194,16 +267,23 @@ def main (argv = sys.argv):
             return -1
 
         _xlsFileName = jkCommonLib.GetFullPath(argv[1])
-
+        
         if len(argv) > 2:
             _outputPath = jkCommonLib.GetFullPath(argv[2])
+            _outputHeaderPath = _outputPath
+            
+            if len(argv) > 3:
+                _outputHeaderPath = jkCommonLib.GetFullPath(argv[3])
+            print (_outputHeaderPath)
         else:
             _outputPath = jkCommonLib.GetLocatedPath(_xlsFileName)
+            _outputHeaderPath = _outputPath
 
     else:
     
         _xlsFileName = jkCommonLib.GetFullPath("../../sample.xlsx")
         _outputPath = jkCommonLib.GetLocatedPath(_xlsFileName)
+        _outputHeaderPath = _outputPath
 
     if os.path.isfile(_xlsFileName) == False:
         print ("Error: Cannout find file %s!" % _xlsFileName)
@@ -215,7 +295,7 @@ def main (argv = sys.argv):
     print ('export json file on @%s' % _outputPath )
     
     
-    xlsx2json(_xlsFileName, _outputPath)
+    xlsx2json(_xlsFileName, _outputPath, _outputHeaderPath)
     
 
     return 1
