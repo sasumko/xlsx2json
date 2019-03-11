@@ -248,7 +248,7 @@ def ParseSheet (_sheet, _outPath, _outHeaderPath):
 
 
 def xlsx2json (_sourceFile, _outPath, _outHeaderPath):
-    _workbook = load_workbook(_sourceFile)
+    _workbook = load_workbook(_sourceFile, data_only=True)
 
     print (_workbook.sheetnames)
 
