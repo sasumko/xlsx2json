@@ -98,9 +98,6 @@ def ParseSheetSubProcHeader(_sheet, _name):
     ##  Parse sheet as header
 
     _dataRowIndex = GetKeyFieldStartRowIndex(_sheet)
-    #_dictFieldByColumn = ParseKeyField(_sheet, _dataRowIndex)
-    #_lastColumnIndex = GetLastKeyColumnIndex(_dictFieldByColumn)
-
     
     _lines = 'public class %s\n{\n' % jkCommonLib.GetGNUString( _name )
 
@@ -131,6 +128,59 @@ def ParseSheetSubProcHeader(_sheet, _name):
     
     return _lines
 
+gStrLanguages = { 'ko', 'en', 'ja', 'zh-tw', 'zh-ch' }
+
+def ParseSheetSubProcText (_sheet):
+    ####
+    ##  Parse sheet as Text
+    _dataRowIndex = GetKeyFieldStartRowIndex(_sheet)
+    _dictFieldByColumn = ParseKeyField(_sheet, _dataRowIndex)
+    _lastColumnIndex = GetLastKeyColumnIndex(_dictFieldByColumn)
+
+    _dictRet = {}   #return value (dict)
+
+    
+    print ('.................................................')
+    ##  read data by field order
+    for _row in _sheet.iter_rows(min_row=_dataRowIndex + 1, max_col=_lastColumnIndex + 1):
+        if _row[0].value == None:
+            #if first column is none == comment row to be skipped
+            continue
+
+        _columnIndex = 0
+        
+
+        _idToStore = ""
+        _dictStr = {}
+        
+        #read row
+        for _value in _row:
+            _key = GetKeyByColumnIndex(_dictFieldByColumn, _columnIndex)
+            _valueToStore = _value.value
+
+            if jkCommonLib.IsEmpty(_key) == True or _valueToStore == None:
+                _columnIndex = _columnIndex + 1
+                continue
+            
+            if _key == 'ID':
+                _idToStore = _valueToStore
+
+            if len(_idToStore) > 0 and _key in gStrLanguages:
+                if _key not in _dictRet:
+                    _dictRet[_key] = []
+
+                _listRow = _dictRet[_key]
+                
+                _add = {}
+                _add[_idToStore] = _valueToStore
+                
+                _listRow.append(_add)
+            
+            _columnIndex = _columnIndex + 1
+
+    _strToDump = json.dumps(_dictRet)
+    print (_strToDump)
+    return _dictRet
 
 def ParseSheetSubProcJsonData(_sheet):
     ####
@@ -241,11 +291,23 @@ def ParseSheet (_sheet, _outPath, _outHeaderPath):
         _fpHeader = open(_outputFileNameWithPath, 'w')
         _fpHeader.write(_strToWrite)
         _fpHeader.close()
+    
+    elif _type == 'text':
+        #parse sheet as text
+        _dictRet = ParseSheetSubProcText(_sheet)
+
+
+        for _lang, _list in _dictRet.items():
+            _outputFileNameWithPath = os.path.join( _outPath, _outputFileName + "." + _lang + ".json")
+            _fpJson = open(_outputFileNameWithPath, 'w', encoding='utf8')
+            json.dump(_list, _fpJson, indent=3, ensure_ascii=False )
+            _fpJson.close()
         
+                
+            
     return _listRet
             
     
-
 
 def xlsx2json (_sourceFile, _outPath, _outHeaderPath):
     _workbook = load_workbook(_sourceFile, data_only=True)
