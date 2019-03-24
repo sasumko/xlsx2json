@@ -8,6 +8,10 @@ from jkLib import jkCommonLib
 from openpyxl import Workbook
 from openpyxl import load_workbook
 
+gListTextSheets = []
+
+gOutputPath = ""
+gOutputHeaderPath = ""
 
 def GetLastKeyColumnIndex (_dict):
     _ret = 0
@@ -93,6 +97,29 @@ def GetMergedCellValue (_sheet, _row, _col):
         return _sheet.cell(e.min_row, e.min_col).value    
     return None
 
+def WriteTextHeader (_textSheetNames):
+    _lines = 'public class H_Str\n{\n'
+    _lines += '\tpublic string[] TextFileNames = {'
+
+    for index, _name in enumerate( _textSheetNames ):
+        _lines += '\n\t\t\"%s\"' % _name
+        if index < len(_textSheetNames) - 1:
+            _lines += ','
+    _lines += '\n\t};'
+    
+    _lines += '\n\n\tpublic enum eTab\n\t{'
+    for index, _name in enumerate( _textSheetNames ):
+        _lines += '\n\t\t%s' % _name
+        if index == 0:
+            _lines += ' = 0'
+        if index < len(_textSheetNames) - 1:
+            _lines += ','
+    _lines += '\n\t};'
+
+    _lines += '\n}'
+    print (_lines)
+    return _lines
+
 def ParseSheetSubProcHeader(_sheet, _name):
     ####
     ##  Parse sheet as header
@@ -166,15 +193,20 @@ def ParseSheetSubProcText (_sheet):
                 _idToStore = _valueToStore
 
             if len(_idToStore) > 0 and _key in gStrLanguages:
+                # _key => LANGUAGE CODE
                 if _key not in _dictRet:
-                    _dictRet[_key] = []
+                    _dictRet[_key] = {}
 
-                _listRow = _dictRet[_key]
+                if _idToStore in _dictRet[_key]:
+                    print ("Error!! KEY %s DUPLICATED! " % (_idToStore ))
+                _dictRet[_key][_idToStore] = _valueToStore
+                # _dictRow = _dictRet[_key]
                 
-                _add = {}
-                _add[_idToStore] = _valueToStore
+                # _add = {}
+                # _add[_idToStore] = _valueToStore
                 
-                _listRow.append(_add)
+                # _dictRow.append(_add)
+                # _listRow.append(_add)
             
             _columnIndex = _columnIndex + 1
 
@@ -240,7 +272,7 @@ def ParseSheetSubProcJsonData(_sheet):
     return _listRet
 
 
-def ParseSheet (_sheet, _outPath, _outHeaderPath):
+def ParseSheet (_sheet):
     if jkCommonLib.IsEmpty(_sheet['A1'].value) == True or jkCommonLib.IsEmpty(_sheet['A2'].value):
         return None
         
@@ -275,7 +307,7 @@ def ParseSheet (_sheet, _outPath, _outHeaderPath):
             
             return None
     
-        _outputFileNameWithPath = os.path.join( _outPath, _outputFileName + '.json')
+        _outputFileNameWithPath = os.path.join( gOutputPath, _outputFileName + '.json')
         _fpJson = open(_outputFileNameWithPath, 'w')
         json.dump(_listRet, _fpJson)
         _fpJson.close()
@@ -287,42 +319,62 @@ def ParseSheet (_sheet, _outPath, _outHeaderPath):
         #ParseSheet as header
         _strToWrite = ParseSheetSubProcHeader(_sheet, _outputFileName)
 
-        _outputFileNameWithPath = os.path.join( _outHeaderPath, _outputFileName + '.cs')
-        _fpHeader = open(_outputFileNameWithPath, 'w')
-        _fpHeader.write(_strToWrite)
-        _fpHeader.close()
+        WriteHeaderFile(_outputFileName, _strToWrite)
+
     
     elif _type == 'text':
         #parse sheet as text
         _dictRet = ParseSheetSubProcText(_sheet)
 
+        
 
+        
         for _lang, _list in _dictRet.items():
-            _outputFileNameWithPath = os.path.join( _outPath, _outputFileName + "." + _lang + ".json")
+            _pathLang = os.path.join( gOutputPath, _lang)
+            if not os.path.exists(_pathLang):
+                os.makedirs(_pathLang)
+            
+            #write files to each language's directory
+            _outputFileNameWithPath = os.path.join( _pathLang, _outputFileName + ".json")
             _fpJson = open(_outputFileNameWithPath, 'w', encoding='utf8')
             json.dump(_list, _fpJson, indent=3, ensure_ascii=False )
             _fpJson.close()
+            if _outputFileName not in gListTextSheets:
+                gListTextSheets.append(_outputFileName)
+        
+        
         
                 
             
     return _listRet
             
-    
 
-def xlsx2json (_sourceFile, _outPath, _outHeaderPath):
+
+def WriteHeaderFile (_fileName, _buf):
+    _outputFileNameWithPath = os.path.join( gOutputHeaderPath, _fileName + '.cs')
+    _fpHeader = open(_outputFileNameWithPath, 'w')
+    _fpHeader.write(_buf)
+    _fpHeader.close()
+
+def xlsx2json (_sourceFile):
     _workbook = load_workbook(_sourceFile, data_only=True)
 
     print (_workbook.sheetnames)
 
     for _sheet in _workbook:
-        ParseSheet(_sheet, _outPath, _outHeaderPath)
+        ParseSheet(_sheet)
 
-
+    #in case that Text parser executed, need to write down string header
+    if len( gListTextSheets ) > 0:
+        _lineToWrite = WriteTextHeader(gListTextSheets)
+        WriteHeaderFile("H_Str", _lineToWrite)
     return 1
 
 _debugFlag = 0
 
 def main (argv = sys.argv):
+    global gOutputPath
+    global gOutputHeaderPath
     if _debugFlag == 0:
         if len (argv) < 2:
             print ('usage : xlsx2json [xlsx file] [output]')
@@ -331,21 +383,21 @@ def main (argv = sys.argv):
         _xlsFileName = jkCommonLib.GetFullPath(argv[1])
         
         if len(argv) > 2:
-            _outputPath = jkCommonLib.GetFullPath(argv[2])
-            _outputHeaderPath = _outputPath
+            gOutputPath = jkCommonLib.GetFullPath(argv[2])
+            gOutputHeaderPath = gOutputPath
             
             if len(argv) > 3:
-                _outputHeaderPath = jkCommonLib.GetFullPath(argv[3])
-            print (_outputHeaderPath)
+                gOutputHeaderPath = jkCommonLib.GetFullPath(argv[3])
+            #print (_outputHeaderPath)
         else:
-            _outputPath = jkCommonLib.GetLocatedPath(_xlsFileName)
-            _outputHeaderPath = _outputPath
+            gOutputPath = jkCommonLib.GetLocatedPath(_xlsFileName)
+            gOutputHeaderPath = gOutputPath
 
     else:
     
         _xlsFileName = jkCommonLib.GetFullPath("../../sample.xlsx")
-        _outputPath = jkCommonLib.GetLocatedPath(_xlsFileName)
-        _outputHeaderPath = _outputPath
+        gOutputPath = jkCommonLib.GetLocatedPath(_xlsFileName)
+        gOutputHeaderPath = gOutputPath
 
     if os.path.isfile(_xlsFileName) == False:
         print ("Error: Cannout find file %s!" % _xlsFileName)
@@ -354,10 +406,10 @@ def main (argv = sys.argv):
             % (jkCommonLib.GetFileNameFromPath(_xlsFileName), 
                 jkCommonLib.GetLocatedPath(_xlsFileName) )
         )
-    print ('export json file on @%s' % _outputPath )
+    print ('export json file on @%s' % gOutputPath )
     
     
-    xlsx2json(_xlsFileName, _outputPath, _outputHeaderPath)
+    xlsx2json(_xlsFileName)
     
 
     return 1
